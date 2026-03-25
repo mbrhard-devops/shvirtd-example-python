@@ -1,12 +1,25 @@
 #!/bin/bash
 
-# Остановить старые контейнеры 
-docker compose -f compose.yaml down --remove-orphans 2>/dev/null || true
+# Установить Docker, если нет
+if ! command -v docker &> /dev/null; then
+    curl -fsSL https://get.docker.com | sudo sh
+fi
 
-# Собрать и запустить
-docker compose -f compose.yaml up --build -d
+# Склонировать репозиторий в /opt
+if [ ! -d "/opt/shvirtd-example-python" ]; then
+    sudo git clone https://github.com/mbrhard-devops/shvirtd-example-python.git /opt/shvirtd-example-python
+fi
 
-# Показать статус
-docker compose -f compose.yaml ps
+echo "Репозиторий склонирован!"
 
-echo -e "\n Завершение скрипт!"
+cd /opt/shvirtd-example-python
+
+# Выбрать команду: если есть новый docker-compose — использовать его
+if [ -x /usr/local/bin/docker-compose ]; then
+    COMPOSE_CMD="sudo /usr/local/bin/docker-compose"
+else
+    COMPOSE_CMD="sudo docker compose"
+fi
+
+# Запустить проект
+$COMPOSE_CMD -f compose.yaml up --build -d
