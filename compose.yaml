@@ -1,0 +1,89 @@
+# Объявление сервисов (контейнеров)
+services:
+
+  # Service 1: Python-приложение
+  app:
+    # Настройки сборки Docker-образа
+    build:
+      # Путь к контексту сборки (в нашем случае текущая папка)
+      context: .
+      # Файла для сборки
+      dockerfile: Dockerfile.python
+
+    # Имя контейнера в системе
+    container_name: fastapi-app
+
+    # Проброс портов: "порт_на_хосте:порт_в_контейнере"
+    ports:
+      - "5000:5000"
+
+    # Переменные окружения для приложения
+    environment:
+      - DB_HOST=mysql                    # DNS в сети Docker
+      - DB_USER=app                      # Пользователь БД
+      - DB_PASSWORD=very_strong          # Пароль БД
+      - DB_NAME=example                  # Имя базы данных
+
+    # Зависимости: ждать запуска других сервисов перед стартом
+    depends_on:
+      mysql:
+        # Ждать успешной проверки здоровья (healthcheck)
+        condition: service_healthy
+
+    # Подключение к сети
+    networks:
+      - app-network
+
+    # Политика перезапуска: всегда, кроме случая когда остановили вручную
+    restart: unless-stopped
+
+  # Service 2: База данных MySQL
+  mysql:
+    # Готовый образ из Docker Hub
+    image: mysql:8.0
+
+    # Имя контейнера в системе
+    container_name: mysql-db
+
+    # Переменные окружения для MySQL
+    environment:
+      - MYSQL_ROOT_PASSWORD=root_password    # Пароль root пользователя
+      - MYSQL_DATABASE=example               # Создать БД при старте
+      - MYSQL_USER=app                       # Создать пользователя
+      - MYSQL_PASSWORD=very_strong           # Пароль пользователя
+
+    # Тома: сохранение данных вне контейнера
+    volumes:
+      - mysql-data:/var/lib/mysql            # "имя_тома:путь_в_контейнере"
+
+    # Подключение к сети
+    networks:
+      - app-network
+
+    # Проверка здоровья сервиса
+    healthcheck:
+      # Команда для проверки (mysqladmin ping)
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "app", "-pvery_strong"]
+      # Интервал между проверками
+      interval: 10s
+      # Таймаут одной проверки
+      timeout: 5s
+      # Количество попыток перед пометкой "unhealthy"
+      retries: 5
+      # Время на старт перед началом проверок
+      start_period: 30s
+
+    # Политика перезапуска
+    restart: unless-stopped
+
+# Объявление сетей
+networks:
+  # Имя сети
+  app-network:
+    # Драйвер: мост (контейнеры видят друг друга по именам)
+    driver: bridge
+
+# Объявление томов
+volumes:
+  # Имя тома для MySQL (Docker создаст его автоматически)
+  mysql-data:
