@@ -1,69 +1,75 @@
-# Объявление сервисов (контейнеров)
+# Подключаем compose файл
+# proxy.yaml с настройками HAProxy и Nginx
+include:
+  - proxy.yaml
+
 services:
 
   # Service 1: Python-приложение
-  app:
+  web:
     # Настройки сборки Docker-образа
     build:
-      # Путь к контексту сборки (в нашем случае текущая папка)
+      # Путь к контексту сборки
       context: .
-      # Файла для сборки
+      # Файл Dockerfile для сборки
       dockerfile: Dockerfile.python
 
     # Имя контейнера в системе
     container_name: fastapi-app
 
-    # Проброс портов: "порт_на_хосте:порт_в_контейнере"
-    ports:
-      - "5000:5000"
+    # Порт 8090 будет через proxy.yaml (nginx/haproxy)
+    expose:
+      - "5000"
 
-    # Переменные окружения для приложения
+    # ${VAR} - подстановка из файла .env
     environment:
-      - DB_HOST=mysql                    # DNS в сети Docker
-      - DB_USER=app                      # Пользователь БД
-      - DB_PASSWORD=very_strong          # Пароль БД
-      - DB_NAME=example                  # Имя базы данных
+      - DB_HOST=db                       # Имя сервиса БД (было 'mysql')
+      - DB_USER=${MYSQL_USER}            # Из .env файла
+      - DB_PASSWORD=${MYSQL_PASSWORD}    # Из .env файла
+      - DB_NAME=${MYSQL_DATABASE}        # Из .env файла
 
-    # Зависимости: ждать запуска других сервисов перед стартом
+    # Зависимости: ждать запуска БД перед стартом
     depends_on:
-      mysql:
+      db:
         # Ждать успешной проверки здоровья (healthcheck)
         condition: service_healthy
 
-    # Подключение к сети
+    # сеть backend с фиксированным IP
     networks:
-      - app-network
+      backend:
+        ipv4_address: 172.20.0.5
 
-    # Политика перезапуска: всегда, кроме случая когда остановили вручную
-    restart: unless-stopped
+    # always - перезапускать всегда, даже при ручном останове
+    restart: always
 
   # Service 2: База данных MySQL
-  mysql:
+  db:
     # Готовый образ из Docker Hub
     image: mysql:8.0
 
     # Имя контейнера в системе
     container_name: mysql-db
 
-    # Переменные окружения для MySQL
+    # ENV-переменные из .env файла
     environment:
-      - MYSQL_ROOT_PASSWORD=root_password    # Пароль root пользователя
-      - MYSQL_DATABASE=example               # Создать БД при старте
-      - MYSQL_USER=app                       # Создать пользователя
-      - MYSQL_PASSWORD=very_strong           # Пароль пользователя
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
 
     # Тома: сохранение данных вне контейнера
     volumes:
-      - mysql-data:/var/lib/mysql            # "имя_тома:путь_в_контейнере"
+      - mysql-data:/var/lib/mysql
 
-    # Подключение к сети
+    # сеть backend с фиксированным IP
     networks:
-      - app-network
+      backend:
+        ipv4_address: 172.20.0.10
 
-    # Проверка здоровья сервиса
+    # Проверка здоровья сервиса (нужна для depends_on)
     healthcheck:
       # Команда для проверки (mysqladmin ping)
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "app", "-pvery_strong"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "${MYSQL_USER}", "-p${MYSQL_PASSWORD}"]
       # Интервал между проверками
       interval: 10s
       # Таймаут одной проверки
@@ -74,16 +80,20 @@ services:
       start_period: 30s
 
     # Политика перезапуска
-    restart: unless-stopped
+    restart: always
 
-# Объявление сетей
+# ОБЪЯВЛЕНИЕ СЕТЕЙ
 networks:
-  # Имя сети
-  app-network:
+  backend:
     # Драйвер: мост (контейнеры видят друг друга по именам)
     driver: bridge
+    # фиксированные IP контейнерам
+    ipam:
+      config:
+        # Подсеть для всех контейнеров в этой сети
+        - subnet: 172.20.0.0/24
 
-# Объявление томов
+# ОБЪЯВЛЕНИЕ ТОМОВ
 volumes:
   # Имя тома для MySQL (Docker создаст его автоматически)
   mysql-data:

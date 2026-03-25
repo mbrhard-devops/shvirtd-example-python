@@ -33,3 +33,8 @@ ENV/
 # Временные папки
 tmp/
 temp/
+
+# Исключить резервные копии compose файлов из git
+task1-compose.yaml
+*.bak
+*.old
